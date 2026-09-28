@@ -3,7 +3,10 @@ const defaultSentence = "DR: Wie denkst du über den Mars"
 
 let padding, chatbox_width, right_offset, boxpadding;
 let scroll_offset = 0
-let temperature = 1
+let temperature = 0.5
+let loadingText = "Loading models…" // progress text shown while the models load
+let modelsReady = false // true when both engines are loaded
+let started = false     // true when the conversation is running
 const stack = [{
   align: 0,
   content: defaultSentence
@@ -25,7 +28,7 @@ async function chat(actor, lastSentence) {
     const chunks = await actor.chat.completions.create({
       messages,
       stream: true,
-      temperature: 0.5,
+      temperature: temperature,
       stream_options: { include_usage: true },
     });
 
@@ -68,19 +71,8 @@ async function chat(actor, lastSentence) {
  }
 
 
-async function setup() {
-  const selectedModel = "Llama-3.2-1B-Instruct-q4f32_1-MLC";
-  try {
-    engine1 = await window.webllm.CreateMLCEngine(selectedModel);
-    engine2 = await window.webllm.CreateMLCEngine(selectedModel);
-  } catch (e) {
-    alert(e)
-  }
-
-  console.log(engine1, engine2)
-
-
-
+function setup() {
+  // Create the canvas first, so the loading progress can be shown
   createCanvas(windowWidth, windowHeight);
   padding = 20
   chatbox_width = width / 2 - (padding * 1.5)
@@ -90,6 +82,28 @@ async function setup() {
   fill(255);
   textSize(16);
   textWrap(WORD)
+
+  loadModels()
+}
+
+async function loadModels() {
+  const selectedModel = "Llama-3.2-1B-Instruct-q4f32_1-MLC";
+  try {
+    // initProgressCallback reports the download / loading progress
+    engine1 = await window.webllm.CreateMLCEngine(selectedModel, {
+      initProgressCallback: (report) => { loadingText = "Model 1: " + report.text }
+    });
+    engine2 = await window.webllm.CreateMLCEngine(selectedModel, {
+      initProgressCallback: (report) => { loadingText = "Model 2: " + report.text }
+    });
+    modelsReady = true
+    loadingText = "Models ready – click to start the conversation"
+  } catch (e) {
+    loadingText = "Error: " + e
+    alert(e)
+  }
+
+  console.log(engine1, engine2)
 }
 
 function draw() {
@@ -110,8 +124,20 @@ function draw() {
   if (vertical_offset + padding > height + scroll_offset) {
     scroll_offset = vertical_offset + padding - height
   }
+
+  // Show the loading progress until the conversation starts
+  if (!started) {
+    push()
+      resetMatrix()
+      fill(160)
+      text(loadingText, padding, height - 2 * padding, width - 2 * padding)
+    pop()
+  }
 }
 
 function mouseClicked() {
+  // Start only once, and only when both models are loaded
+  if (!modelsReady || started) return
+  started = true
   chat(engine2);
 }
